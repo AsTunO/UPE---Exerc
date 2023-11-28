@@ -1,37 +1,66 @@
-from flask import Flask, g
-import sqlite3
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'  # Nome do banco de dados SQLite
+db = SQLAlchemy(app)
 
-DATABASE = 'exemplo.db'
+# Modelo de exemplo (substitua com o seu modelo)
+class Produto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100))
+    descricao = db.Column(db.String(200))
 
-@app.route('/add/<mensagem>')
-def add_message(mensagem):
-    cursor = get_db().cursor()
-    cursor.execute('''INSERT INTO mensagens (conteudo) VALUES (?)''', (mensagem,))
-    get_db().commit()
-    return f'Mensagem: {mensagem}'
+    def __init__(self, nome, descricao):
+        self.nome = nome
+        self.descricao = descricao
 
-# Função para conectar ao banco de dados
-def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-    return db
+# Rotas CRUD
+@app.route('/produtos', methods=['GET'])
+def listar_produtos():
+    produtos = Produto.query.all()
+    output = []
+    for produto in produtos:
+        output.append({'id': produto.id, 'nome': produto.nome, 'descricao': produto.descricao})
+    return jsonify({'produtos': output})
 
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
+@app.route('/produto/<id>', methods=['GET'])
+def obter_produto(id):
+    produto = Produto.query.get(id)
+    if not produto:
+        return jsonify({'message': 'Produto não encontrado'})
+    return jsonify({'id': produto.id, 'nome': produto.nome, 'descricao': produto.descricao})
 
-# Rota para mostrar dados do banco
-@app.route('/')
-def show_messages():
-    cursor = get_db().cursor()
-    cursor.execute('''SELECT * FROM mensagens''')
-    mensagens = cursor.fetchall()
-    return f'Mensagens: {mensagens[2]}'
+@app.route('/produto', methods=['POST'])
+def criar_produto():
+    data = request.get_json()
+    novo_produto = Produto(nome=data['nome'], descricao=data['descricao'])
+    db.session.add(novo_produto)
+    db.session.commit()
+    return jsonify({'message': 'Produto criado com sucesso'})
+
+@app.route('/produto/<id>', methods=['PUT'])
+def atualizar_produto(id):
+    produto = Produto.query.get(id)
+    if not produto:
+        return jsonify({'message': 'Produto não encontrado'})
+
+    data = request.get_json()
+    produto.nome = data['nome']
+    produto.descricao = data['descricao']
+    db.session.commit()
+    return jsonify({'message': 'Produto atualizado com sucesso'})
+
+@app.route('/produto/<id>', methods=['DELETE'])
+def deletar_produto(id):
+    produto = Produto.query.get(id)
+    if not produto:
+        return jsonify({'message': 'Produto não encontrado'})
+    db.session.delete(produto)
+    db.session.commit()
+    return jsonify({'message': 'Produto deletado com sucesso'})
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
